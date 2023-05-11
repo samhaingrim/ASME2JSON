@@ -1,20 +1,37 @@
+import argparse
+import logging
 import json
 import re
 import fitz
+import time
+
+# Set start time for total execution calculation
+startTime = time.time()
+
+# Set up logger
+logging.basicConfig(
+format='%(asctime)s %(levelname)-8s %(message)s',
+    level=logging.DEBUG,
+    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARN)
 
 def is_bold(span):
     return "Bold" in span["font"]
 
-def extract_sections_and_codes(pdf_file, start_page, end_page):
+def extract_sections_and_codes(pdf_file):
     doc = fitz.open(pdf_file)
     sections_and_codes = []
 
     current_section = ""
     current_section_title = ""
     current_code = ""
+    doc_pages = len(doc)
 
-    for i in range(start_page, end_page + 1):
+    logger.info("Parsing " + pdf_file)
+    for i in range(0, doc_pages):     
         page = doc.load_page(i)
+        logger.info("parsing page " + i.__str__() + " of " + doc_pages.__str__())
         blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_LIGATURES)["blocks"]
 
         # Process each block of text
@@ -48,25 +65,42 @@ def extract_sections_and_codes(pdf_file, start_page, end_page):
                     else:
                         for span in spans:
                             current_code += " " + span["text"]
-
+    
     # Add the last section
     sections_and_codes.append({
         "SECTION": current_section,
         "SECTION_TITLE": current_section_title,
         "CODE": current_code.strip(),
     })
-
+    
     return sections_and_codes
 
 def main():
-    pdf_file = "A17-3_2015.pdf"
-    start_page = 0  # PDF page numbers start from 0, so subtract 1 from the provided page number
-    end_page = 100
-
-    sections_and_codes = extract_sections_and_codes(pdf_file, start_page, end_page)
-
-    with open("173-2015.json", "w") as json_file:
+    parser = argparse.ArgumentParser(description='Convert ASME Code Books to JSON')
+    parser.add_argument('--input', '-i', type=str, dest='pdf_input', required=True,
+        help='ASME Code Book PDF Filename')
+    parser.add_argument('--output', '-o', type=str, dest='json_output',
+        help='JSON Output Filename')
+    parser.add_argument('--verbose', '-v', dest='verbose', default=False, action='store_true',
+        help='Verbose Console Output')
+    args = parser.parse_args()
+    if args.verbose:
+        logger.setLevel(logging.INFO)
+    pdf_file = args.pdf_input
+    if args.json_output is not None:
+        json_file = args.json_output
+    else:
+        json_file = pdf_file + ".json"
+    logger.info("Opening " + pdf_file)
+    sections_and_codes = extract_sections_and_codes(pdf_file)
+    logger.info("Writing output to " + json_file)
+    with open(json_file, "w") as json_file:
         json.dump(sections_and_codes, json_file, indent=2)
+    logger.info("Conversion complete, exiting.")
+    # Execution time calculation
+    executionTime = (time.time() - startTime)
+    logger.info('Execution time in seconds: ' + str(executionTime))
+    exit(0)
 
 if __name__ == "__main__":
     main()
